@@ -1,0 +1,23 @@
+{
+  "name": "secure-campus-service-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise-grade institutional service and grievance management portal for Aligarh Muslim University (AMU).",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "install:all": "npm --prefix frontend install",
+    "preview": "npm --prefix frontend run preview"
+  },
+  "keywords": [
+    "campus-portal",
+    "amu",
+    "grievance-redressal",
+    "service-desk",
+    "react",
+    "typescript",
+    "vite"
+  ],
+  "author": "Sameer Ahmad <sameerabraransari@gmail.com>",
+  "license": "ISC"
+}
