@@ -1,325 +1,279 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { complaintService, serviceRequestService, noticeService } from '../../services';
 import type { Complaint, ServiceRequest, Notice } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
-import {
-  FileText,
-  PlusCircle,
-  FileCheck2,
-  ArrowRight,
-  Pin,
-  Clock,
-  Building,
-  Bell,
-} from 'lucide-react';
+import { CAMPUS_SERVICES } from '../../data/campusServices';
+import { Reveal } from '../../components/ui/Reveal';
+import { ArrowRight, Pin, FileCheck2, FileText, Plus, Phone, ChevronRight, FolderOpen } from 'lucide-react';
+
+const HELPLINES = [
+  { label: 'Proctor control room', number: '+91 571 2700010' },
+  { label: 'Computer Centre', number: '+91 571 2700920' },
+  { label: 'Health Centre (24 hours)', number: '+91 571 2700192', urgent: true },
+  { label: 'Student grievance cell', number: '+91 571 2700430' },
+];
+
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
+const isOpenComplaint = (c: Complaint) => !['RESOLVED', 'CLOSED', 'REJECTED'].includes(c.status);
+const isOpenRequest = (r: ServiceRequest) => !['FULFILLED', 'CLOSED', 'REJECTED'].includes(r.status);
 
 export const StudentDashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
-
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
-  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[] | null>(null);
+  const [requests, setRequests] = useState<ServiceRequest[] | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
 
   useEffect(() => {
-    const load = async () => {
-      if (!currentUser) return;
-      const [cmps, reqs, nots] = await Promise.all([
-        complaintService.getComplaints({ studentId: currentUser.id }),
-        serviceRequestService.getRequests({ studentId: currentUser.id }),
-        noticeService.getNotices('STUDENTS'),
-      ]);
+    if (!currentUser) return;
+    let cancelled = false;
+    Promise.all([
+      complaintService.getComplaints({ studentId: currentUser.id }),
+      serviceRequestService.getRequests({ studentId: currentUser.id }),
+      noticeService.getNotices('STUDENTS'),
+    ]).then(([cmps, reqs, nots]) => {
+      if (cancelled) return;
       setComplaints(cmps);
       setRequests(reqs);
       setNotices(nots);
+    });
+    return () => {
+      cancelled = true;
     };
-    load();
   }, [currentUser]);
 
-  const openComplaintsCount = complaints.filter(
-    (c) => c.status !== 'RESOLVED' && c.status !== 'CLOSED' && c.status !== 'REJECTED'
-  ).length;
+  const pinned = notices.find((n) => n.isPinned) || notices[0];
+  const firstName = (currentUser?.name || 'Tariq Ahmad').split(' ')[0];
+  const openRequests = requests?.filter(isOpenRequest).length;
+  const openComplaints = complaints?.filter(isOpenComplaint).length;
 
-  const activeRequestsCount = requests.filter(
-    (r) => r.status !== 'FULFILLED' && r.status !== 'CLOSED' && r.status !== 'REJECTED'
-  ).length;
-
-  const pinnedNotice = notices.find((n) => n.isPinned);
+  const stats = [
+    { label: 'Requests in progress', value: openRequests, to: '/student/requests' },
+    { label: 'Open grievances', value: openComplaints, to: '/student/complaints' },
+    { label: 'Fee balance', value: '₹0', to: '/student/services/fee-payments' },
+    { label: 'CGPA', value: '8.84', to: '/student/services/results-degree' },
+  ];
 
   return (
-    <div className="space-y-5">
-      {/* 1. Compact Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            Welcome back, {currentUser?.name}
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Student ID: <span className="font-semibold text-slate-800">{currentUser?.studentId || '2023-CS-042'}</span> • {currentUser?.departmentName || 'Department of Computer Science'}
-          </p>
-        </div>
-
-        {/* Primary Quick Actions */}
-        <div className="flex items-center gap-2">
-          <Link
-            to="/student/complaints/new"
-            className="btn-primary text-xs py-1.5 px-3"
-          >
-            <PlusCircle className="w-3.5 h-3.5" />
-            Lodge Complaint
-          </Link>
-          <Link
-            to="/student/requests/new"
-            className="btn-secondary text-xs py-1.5 px-3"
-          >
-            <FileCheck2 className="w-3.5 h-3.5 text-slate-600" />
-            Apply for Service
-          </Link>
-        </div>
-      </div>
-
-      {/* 2. Compact Announcement Strip */}
-      {pinnedNotice && (
-        <div className="bg-amber-50/90 border border-amber-200 rounded px-3.5 py-2 text-xs text-amber-950 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 truncate">
-            <Pin className="w-3.5 h-3.5 text-amber-700 shrink-0 rotate-45" />
-            <span className="font-semibold text-amber-900 shrink-0">Official Advisory:</span>
-            <span className="truncate text-amber-900/90 font-medium">{pinnedNotice.title}</span>
-            <span className="hidden md:inline text-amber-800/80 text-[11px] truncate">— {pinnedNotice.content}</span>
+    <div className="space-y-8">
+      {/* Greeting */}
+      <section className="animate-fade-up">
+        <p className="text-sm text-slate-500 dark:text-slate-400">{greeting()},</p>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mt-1">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-semibold">{firstName}</h1>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              <span className="font-mono">{currentUser?.studentId || '2023-CS-042'}</span>
+              <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>
+              {currentUser?.departmentName || 'Department of Computer Science'}
+              <span className="hidden sm:inline">
+                <span className="mx-2 text-slate-300 dark:text-slate-600">·</span>Sir Syed Hall (North)
+              </span>
+            </p>
           </div>
+          <div className="flex gap-2 sm:shrink-0">
+            <Link to="/student/complaints/new" className="btn-secondary flex-1 sm:flex-none">
+              <Plus className="w-4 h-4" /> File grievance
+            </Link>
+            <Link to="/student/services" className="btn-primary flex-1 sm:flex-none">
+              All services <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Stats */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {stats.map((s, i) => (
+          <Reveal key={s.label} delay={i * 60}>
+            <Link to={s.to} className="card card-hover block p-4 h-full">
+              <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">{s.label}</div>
+              {s.value === undefined ? (
+                <div className="skeleton h-7 w-12 mt-2" />
+              ) : (
+                <div className="text-2xl font-semibold font-mono text-slate-900 dark:text-white mt-1">{s.value}</div>
+              )}
+            </Link>
+          </Reveal>
+        ))}
+      </section>
+
+      {/* Pinned notice */}
+      {pinned && (
+        <Reveal>
           <Link
             to="/student/notices"
-            className="text-[11px] font-semibold text-amber-900 hover:text-amber-950 underline shrink-0 whitespace-nowrap"
+            className="group flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 transition-colors hover:border-amber-300"
           >
-            View Bulletin →
+            <Pin className="w-4 h-4 shrink-0 rotate-45 text-amber-600" />
+            <span className="font-medium truncate min-w-0">{pinned.title}</span>
+            <span className="hidden xl:inline truncate min-w-0 flex-1 text-amber-800/80">{pinned.content}</span>
+            <ChevronRight className="w-4 h-4 ml-auto shrink-0 transition-transform duration-300 group-hover:translate-x-0.5" />
           </Link>
-        </div>
+        </Reveal>
       )}
 
-      {/* 3. Compact Summary Metrics Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Link
-          to="/student/complaints"
-          className="bg-white border border-slate-200 rounded-md p-3 hover:border-slate-300 transition-colors flex items-center justify-between"
-        >
+      {/* Services */}
+      <section>
+        <div className="flex items-end justify-between mb-4">
           <div>
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-              Active Complaints
-            </span>
-            <div className="text-xl font-bold text-slate-900 mt-0.5 flex items-baseline gap-2">
-              <span>{openComplaintsCount}</span>
-              <span className="text-xs text-slate-400 font-normal">cases under review</span>
-            </div>
+            <h2 className="text-lg font-semibold">Services</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Pick one to apply, download documents or check status.</p>
           </div>
-          <FileText className="w-5 h-5 text-slate-400" />
-        </Link>
-
-        <Link
-          to="/student/requests"
-          className="bg-white border border-slate-200 rounded-md p-3 hover:border-slate-300 transition-colors flex items-center justify-between"
-        >
-          <div>
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-              Service Requests
-            </span>
-            <div className="text-xl font-bold text-slate-900 mt-0.5 flex items-baseline gap-2">
-              <span>{activeRequestsCount}</span>
-              <span className="text-xs text-slate-400 font-normal">in processing</span>
-            </div>
-          </div>
-          <FileCheck2 className="w-5 h-5 text-slate-400" />
-        </Link>
-
-        <Link
-          to="/student/notices"
-          className="bg-white border border-slate-200 rounded-md p-3 hover:border-slate-300 transition-colors flex items-center justify-between"
-        >
-          <div>
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-              Campus Bulletins
-            </span>
-            <div className="text-xl font-bold text-slate-900 mt-0.5 flex items-baseline gap-2">
-              <span>{notices.length}</span>
-              <span className="text-xs text-slate-400 font-normal">published notices</span>
-            </div>
-          </div>
-          <Bell className="w-5 h-5 text-slate-400" />
-        </Link>
-      </div>
-
-      {/* 4. Dominant Main Content: Recent Complaints & Issue Tracking */}
-      <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 tracking-tight">
-              Recent Complaints & Grievance Cases
-            </h2>
-            <p className="text-[11px] text-slate-500">
-              Departmental assignment, progress milestones, and resolution updates
-            </p>
-          </div>
-          <Link
-            to="/student/complaints"
-            className="text-xs font-semibold text-campus-800 hover:text-campus-950 flex items-center gap-1"
-          >
-            All complaints ({complaints.length}) <ArrowRight className="w-3 h-3" />
+          <Link to="/student/services" className="hidden sm:inline-flex items-center gap-1 text-sm font-medium text-campus-700 dark:text-campus-400 hover:underline">
+            View all <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
-
-        {complaints.length === 0 ? (
-          <div className="p-8 text-center text-slate-500">
-            <FileText className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-            <p className="text-xs font-semibold text-slate-700">No active grievance tickets</p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Submit a complaint to report facilities, academic, or network issues.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 font-semibold uppercase tracking-wider text-[10px]">
-                <tr>
-                  <th className="px-5 py-2.5">Ticket ID</th>
-                  <th className="px-5 py-2.5">Complaint Summary</th>
-                  <th className="px-5 py-2.5">Department</th>
-                  <th className="px-5 py-2.5">Priority</th>
-                  <th className="px-5 py-2.5">Status</th>
-                  <th className="px-5 py-2.5">Lodged Date</th>
-                  <th className="px-5 py-2.5 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {complaints.slice(0, 5).map((cmp) => (
-                  <tr key={cmp.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-5 py-3 font-mono font-medium text-slate-900 whitespace-nowrap">
-                      {cmp.ticketNumber}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="font-semibold text-slate-900 truncate max-w-md">
-                        {cmp.title}
-                      </div>
-                      <div className="text-[11px] text-slate-500 truncate max-w-md">
-                        {cmp.description}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-slate-700 whitespace-nowrap">
-                      {cmp.departmentName}
-                    </td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      <PriorityBadge priority={cmp.priority} />
-                    </td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      <StatusBadge status={cmp.status} />
-                    </td>
-                    <td className="px-5 py-3 text-slate-500 whitespace-nowrap font-mono text-[11px]">
-                      {new Date(cmp.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-5 py-3 text-right whitespace-nowrap">
-                      <Link
-                        to={`/student/complaints/${cmp.id}`}
-                        className="text-xs font-semibold text-campus-800 hover:text-campus-950 inline-flex items-center gap-1"
-                      >
-                        Timeline <ArrowRight className="w-3 h-3" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* 5. Secondary Grid: Service Applications & Campus Bulletins */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Left: Active Service Requests Tracker */}
-        <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-            <div>
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Recent Service Applications
-              </h3>
-            </div>
-            <Link
-              to="/student/requests"
-              className="text-[11px] font-semibold text-campus-800 hover:text-campus-950 flex items-center gap-1"
-            >
-              View all ({requests.length}) <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-
-          {requests.length === 0 ? (
-            <div className="p-6 text-center text-xs text-slate-400">
-              No active certificate or service applications.
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100 text-xs">
-              {requests.slice(0, 4).map((req) => (
-                <div key={req.id} className="p-3.5 hover:bg-slate-50 transition-colors flex items-center justify-between gap-3">
-                  <div className="space-y-0.5 truncate">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[11px] font-medium text-slate-700">
-                        {req.requestNumber}
-                      </span>
-                      <StatusBadge status={req.status} />
-                    </div>
-                    <div className="font-semibold text-slate-900 truncate">
-                      {req.serviceName}
-                    </div>
-                    <div className="text-[11px] text-slate-500">
-                      Dept: {req.departmentName}
-                    </div>
-                  </div>
-                  <Link
-                    to={`/student/requests/${req.id}`}
-                    className="btn-secondary text-[11px] py-1 px-2.5 shrink-0"
-                  >
-                    Track
-                  </Link>
+        <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {CAMPUS_SERVICES.map((s, i) => (
+            <Reveal as="li" key={s.id} delay={i * 40}>
+              <Link to={`/student/services/${s.slug}`} className="card card-hover group h-full p-4 flex flex-col gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform duration-300 ease-out group-hover:scale-105 ${s.tint}`}>
+                  <s.icon className="w-5 h-5" />
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Right: Latest Notices List */}
-        <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Latest Campus Notices
-            </h3>
-            <Link
-              to="/student/notices"
-              className="text-[11px] font-semibold text-campus-800 hover:text-campus-950 flex items-center gap-1"
-            >
-              Noticeboard <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
-
-          <div className="divide-y divide-slate-100 text-xs">
-            {notices.slice(0, 4).map((n) => (
-              <div key={n.id} className="p-3.5 hover:bg-slate-50 transition-colors space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                    {n.category}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {new Date(n.publishedAt).toLocaleDateString()}
-                  </span>
+                <div>
+                  <div className="text-sm font-medium text-slate-900 dark:text-white leading-snug">{s.title}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{s.status.label}</div>
                 </div>
-                <h4 className="font-semibold text-slate-900 leading-snug">
-                  {n.title}
-                </h4>
-                <p className="text-[11px] text-slate-600 line-clamp-1">
-                  {n.content}
-                </p>
-              </div>
-            ))}
-          </div>
+              </Link>
+            </Reveal>
+          ))}
+        </ul>
+        <div className="mt-3 flex gap-3">
+          <Link to="/student/documents" className="inline-flex items-center gap-2 text-sm font-medium text-campus-700 dark:text-campus-400 hover:underline min-h-[44px]">
+            <FolderOpen className="w-4 h-4" /> All my documents
+          </Link>
         </div>
-      </div>
+      </section>
+
+      {/* Trackers */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Tracker
+          title="My requests"
+          icon={FileCheck2}
+          viewAll="/student/requests"
+          loading={requests === null}
+          empty="No service requests yet."
+          items={(requests ?? []).slice(0, 4).map((r) => ({
+            id: r.id,
+            to: `/student/requests/${r.id}`,
+            ref: r.requestNumber,
+            title: r.serviceName,
+            meta: r.departmentName,
+            date: r.createdAt,
+            badges: <StatusBadge status={r.status} />,
+          }))}
+        />
+        <Tracker
+          title="My grievances"
+          icon={FileText}
+          viewAll="/student/complaints"
+          loading={complaints === null}
+          empty="No grievances filed."
+          items={(complaints ?? []).slice(0, 4).map((c) => ({
+            id: c.id,
+            to: `/student/complaints/${c.id}`,
+            ref: c.ticketNumber,
+            title: c.title,
+            meta: c.departmentName,
+            date: c.createdAt,
+            badges: (
+              <>
+                <PriorityBadge priority={c.priority} />
+                <StatusBadge status={c.status} />
+              </>
+            ),
+          }))}
+        />
+      </section>
+
+      {/* Helplines */}
+      <Reveal as="section" className="card p-5">
+        <h2 className="text-base font-semibold flex items-center gap-2">
+          <Phone className="w-4 h-4 text-slate-400" /> Helplines
+        </h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Staffed 08:00 to 16:00 on working days.</p>
+        <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {HELPLINES.map((h) => (
+            <li key={h.label}>
+              <a
+                href={`tel:${h.number.replace(/\s/g, '')}`}
+                className="block rounded-lg border border-slate-200 dark:border-slate-800 p-3 transition-colors hover:border-slate-300 dark:hover:border-slate-700"
+              >
+                <div className="text-xs text-slate-500 dark:text-slate-400">{h.label}</div>
+                <div className={`font-mono text-sm font-medium mt-0.5 ${h.urgent ? 'text-rose-700 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{h.number}</div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </Reveal>
     </div>
   );
 };
+
+interface TrackerItem {
+  id: string;
+  to: string;
+  ref: string;
+  title: string;
+  meta: string;
+  date: string;
+  badges: React.ReactNode;
+}
+
+const Tracker: React.FC<{
+  title: string;
+  icon: React.ElementType;
+  viewAll: string;
+  loading: boolean;
+  empty: string;
+  items: TrackerItem[];
+}> = ({ title, icon: Icon, viewAll, loading, empty, items }) => (
+  <Reveal className="card overflow-hidden">
+    <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+      <h2 className="text-base font-semibold flex items-center gap-2">
+        <Icon className="w-4 h-4 text-slate-400" /> {title}
+      </h2>
+      <Link to={viewAll} className="text-sm font-medium text-campus-700 dark:text-campus-400 hover:underline">
+        View all
+      </Link>
+    </div>
+    {loading ? (
+      <div className="p-4 space-y-3">
+        {[0, 1, 2].map((i) => <div key={i} className="skeleton h-12" />)}
+      </div>
+    ) : items.length === 0 ? (
+      <p className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">{empty}</p>
+    ) : (
+      <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+        {items.map((it) => (
+          <li key={it.id}>
+            <Link to={it.to} className="flex items-center gap-3 px-5 py-3.5 hover:bg-slate-50/80 transition-colors">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{it.ref}</span>
+                  {it.badges}
+                </div>
+                <div className="text-sm font-medium text-slate-900 dark:text-white truncate mt-1">{it.title}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {it.meta} · {new Date(it.date).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    )}
+  </Reveal>
+);
+
+export default StudentDashboardPage;

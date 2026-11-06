@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { complaintService } from '../../services';
 import type { Complaint } from '../../types';
 import { StatusBadge } from '../../components/common/StatusBadge';
+import { useToast } from '../../components/ui/Toast';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
 import {
   ArrowLeft,
@@ -17,14 +18,24 @@ import {
   MessageSquare,
   ShieldAlert,
   UserCheck,
+  Send,
+  AlertCircle,
+  Sparkles,
+  BookOpen,
 } from 'lucide-react';
 
 export const ComplaintDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { currentUser } = useAuth();
+  const { toast } = useToast();
 
   const [complaint, setComplaint] = useState<Complaint | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Student response to NEED_MORE_INFO
+  const [studentResponse, setStudentResponse] = useState('');
+  const [isSubmittingResponse, setIsSubmittingResponse] = useState(false);
+  const [responseSuccess, setResponseSuccess] = useState<string | null>(null);
 
   // Feedback State
   const [rating, setRating] = useState(5);
@@ -35,7 +46,7 @@ export const ComplaintDetailPage: React.FC = () => {
   useEffect(() => {
     const load = async () => {
       if (!id) return;
-      setIsLoading(false);
+      setIsLoading(true);
       try {
         const data = await complaintService.getComplaintById(id);
         setComplaint(data);
@@ -45,6 +56,29 @@ export const ComplaintDetailPage: React.FC = () => {
     };
     load();
   }, [id]);
+
+  const handleStudentResponseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !complaint || !studentResponse.trim()) return;
+    setIsSubmittingResponse(true);
+    setResponseSuccess(null);
+    try {
+      // Per PDF lifecycle: NEED_MORE_INFO -> UNDER_REVIEW when student supplies clarification
+      const updated = await complaintService.updateStatus(currentUser, {
+        complaintId: complaint.id,
+        newStatus: 'UNDER_REVIEW',
+        comment: 'Student submitted requested clarification/proof.',
+        publicRemark: `Student response: ${studentResponse.trim()}`,
+      });
+      setComplaint({ ...updated });
+      setStudentResponse('');
+      setResponseSuccess('Your clarification was submitted and ticket status transitioned back to Under Review.');
+    } catch (err: unknown) {
+      toast('Could not send your response', { tone: 'error', description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setIsSubmittingResponse(false);
+    }
+  };
 
   const handleFeedbackSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,13 +90,21 @@ export const ComplaintDetailPage: React.FC = () => {
         comment: feedbackComment,
       });
       setFeedbackSuccess(true);
-      // Reload
       const updated = await complaintService.getComplaintById(complaint.id);
       setComplaint(updated);
     } finally {
       setIsSubmittingFeedback(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
+        <Clock className="w-8 h-8 text-slate-400 mx-auto mb-2 animate-spin" />
+        <p className="text-xs text-slate-500">Loading complaint record...</p>
+      </div>
+    );
+  }
 
   if (!complaint) {
     return (
@@ -78,10 +120,8 @@ export const ComplaintDetailPage: React.FC = () => {
     );
   }
 
-  // Filter remarks: only public remarks are shown to student
-  const visibleRemarks = complaint.remarks.filter(
-    (r) => !r.isInternal || currentUser?.role !== 'STUDENT'
-  );
+  // Security Rule: Internal remarks must NEVER be visible to student view
+  const visibleRemarks = complaint.remarks.filter((r) => !r.isInternal);
 
   return (
     <div className="space-y-6 w-full">
@@ -107,6 +147,13 @@ export const ComplaintDetailPage: React.FC = () => {
         </Link>
       </div>
 
+      {responseSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm rounded-lg p-3.5 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{responseSuccess}</span>
+        </div>
+      )}
+
       {/* Main Ticket Banner */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -119,6 +166,11 @@ export const ComplaintDetailPage: React.FC = () => {
             <span className="text-xs text-slate-500 font-medium">
               Category: {complaint.category.replace('_', ' ')}
             </span>
+            {complaint.subcategoryName && (
+              <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                {complaint.subcategoryName}
+              </span>
+            )}
           </div>
 
           <div className="text-xs text-slate-500 flex items-center gap-1.5">
@@ -149,17 +201,84 @@ export const ComplaintDetailPage: React.FC = () => {
           <div className="flex items-center gap-2 text-slate-600">
             <UserCheck className="w-4 h-4 text-slate-400 shrink-0" />
             <span>
-              <strong className="text-slate-800">Assigned Officer:</strong>{' '}
-              {complaint.assignedStaffName || 'Pending Assignment'}
+              <strong className="text-slate-800">Assigned Handler:</strong>{' '}
+              {complaint.assignedStaffName || complaint.assignedUnit || 'Assigned Department Desk'}
             </span>
           </div>
         </div>
       </div>
 
+      {/* Action Notice: Need More Information */}
+      {complaint.status === 'NEED_MORE_INFO' && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-5 space-y-3">
+          <div className="flex items-center gap-2 text-orange-900 font-bold text-xs uppercase tracking-wider">
+            <AlertCircle className="w-4 h-4 text-orange-600" />
+            Department Action Required: Additional Proof or Clarification Needed
+          </div>
+          <p className="text-xs text-orange-800 leading-relaxed">
+            The assigned officer has requested further information or supporting documentation to proceed with verification.
+            Please submit your response below to return this ticket to Under Review.
+          </p>
+
+          <form onSubmit={handleStudentResponseSubmit} className="space-y-3 pt-2">
+            <textarea
+              rows={3}
+              required
+              placeholder="Enter requested clarification, registration details, or evidence facts..."
+              value={studentResponse}
+              onChange={(e) => setStudentResponse(e.target.value)}
+              className="w-full text-xs rounded-lg border border-orange-300 bg-white p-2.5 text-slate-900 focus:outline-none focus:ring-1 focus:ring-orange-600"
+            />
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={isSubmittingResponse}
+                className="btn-primary text-xs bg-orange-700 hover:bg-orange-800"
+              >
+                {isSubmittingResponse ? 'Submitting...' : 'Submit Clarification to Handler'}
+                <Send className="w-3 h-3" />
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Two Column Layout: Description & Details on Left, Timeline on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column (2 Cols) */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Specific Attendance Complaint Verification Card (Stakeholder.pdf) */}
+          {complaint.attendanceData && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-3">
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-100">
+                <BookOpen className="w-4 h-4 text-campus-700" />
+                Attendance Discrepancy Record (Stakeholder Verification Schema)
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="p-2.5 bg-slate-50 rounded border border-slate-100">
+                  <span className="text-slate-500 block text-[11px]">Subject / Course Code:</span>
+                  <span className="font-semibold text-slate-900">{complaint.attendanceData.subject}</span>
+                </div>
+                <div className="p-2.5 bg-slate-50 rounded border border-slate-100">
+                  <span className="text-slate-500 block text-[11px]">Concerned Faculty:</span>
+                  <span className="font-semibold text-slate-900">{complaint.attendanceData.facultyName}</span>
+                </div>
+                <div className="p-2.5 bg-slate-50 rounded border border-slate-100">
+                  <span className="text-slate-500 block text-[11px]">Date of Attendance:</span>
+                  <span className="font-semibold text-slate-900">{complaint.attendanceData.dateOfAttendance}</span>
+                </div>
+                <div className="p-2.5 bg-slate-50 rounded border border-slate-100">
+                  <span className="text-slate-500 block text-[11px]">Reported Discrepancy Type:</span>
+                  <span className="font-semibold text-campus-800">{complaint.attendanceData.complaintType}</span>
+                </div>
+                <div className="p-2.5 bg-slate-50 rounded border border-slate-100 sm:col-span-2">
+                  <span className="text-slate-500 block text-[11px]">Recorded Status in Portal:</span>
+                  <span className="font-semibold text-rose-700">{complaint.attendanceData.recordedAttendanceStatus}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Detailed Statement */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-3">
             <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -168,6 +287,27 @@ export const ComplaintDetailPage: React.FC = () => {
             <div className="text-xs sm:text-sm text-slate-800 whitespace-pre-line leading-relaxed bg-slate-50/60 p-4 rounded-lg border border-slate-100">
               {complaint.description}
             </div>
+
+            {/* Resolution or Rejection Reason if present */}
+            {complaint.resolutionReason && (
+              <div className="p-3.5 bg-emerald-50 rounded-lg border border-emerald-200 text-xs text-emerald-900 space-y-1">
+                <span className="font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  Official Resolution Decision:
+                </span>
+                <p>{complaint.resolutionReason}</p>
+              </div>
+            )}
+
+            {complaint.rejectionReason && (
+              <div className="p-3.5 bg-rose-50 rounded-lg border border-rose-200 text-xs text-rose-900 space-y-1">
+                <span className="font-bold flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                  Reason for Rejection:
+                </span>
+                <p>{complaint.rejectionReason}</p>
+              </div>
+            )}
 
             {/* Attachments */}
             {complaint.attachments.length > 0 && (
@@ -199,27 +339,23 @@ export const ComplaintDetailPage: React.FC = () => {
             )}
           </div>
 
-          {/* Departmental Communications / Remarks */}
+          {/* Departmental Communications / Public Remarks */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4">
             <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <MessageSquare className="w-3.5 h-3.5 text-slate-500" />
-              Department Communication & Updates ({visibleRemarks.length})
+              Public Communication & Remarks ({visibleRemarks.length})
             </h2>
 
             {visibleRemarks.length === 0 ? (
               <p className="text-xs text-slate-400 italic">
-                No official remarks logged by the department yet. Status progress updates appear on the timeline.
+                No official remarks logged by the department yet. Lifecycle changes appear on the status timeline.
               </p>
             ) : (
               <div className="space-y-3">
                 {visibleRemarks.map((rem) => (
                   <div
                     key={rem.id}
-                    className={`p-3.5 rounded-lg border text-xs ${
-                      rem.isInternal
-                        ? 'bg-amber-50/50 border-amber-200 text-amber-900'
-                        : 'bg-slate-50 border-slate-200 text-slate-800'
-                    }`}
+                    className="p-3.5 rounded-lg border text-xs bg-slate-50 border-slate-200 text-slate-800"
                   >
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-semibold text-slate-900 flex items-center gap-1.5">
@@ -227,11 +363,6 @@ export const ComplaintDetailPage: React.FC = () => {
                         <span className="text-[10px] text-slate-500 font-normal">
                           ({rem.authorRole.replace('_', ' ')})
                         </span>
-                        {rem.isInternal && (
-                          <span className="bg-amber-100 text-amber-800 text-[9px] px-1.5 py-0.2 rounded font-bold uppercase">
-                            Internal Note
-                          </span>
-                        )}
                       </span>
                       <span className="text-[10px] text-slate-400">
                         {new Date(rem.createdAt).toLocaleDateString()}
@@ -244,7 +375,7 @@ export const ComplaintDetailPage: React.FC = () => {
             )}
           </div>
 
-          {/* Resolution & Feedback Section (FR-FB-001) */}
+          {/* Resolution & Feedback Section */}
           {complaint.status === 'RESOLVED' && (
             <div className="bg-emerald-50/50 rounded-xl border border-emerald-200 p-6 space-y-4">
               <div className="flex items-center gap-2 text-emerald-900 font-bold text-sm">
@@ -279,7 +410,7 @@ export const ComplaintDetailPage: React.FC = () => {
               ) : (
                 <form onSubmit={handleFeedbackSubmit} className="space-y-3">
                   <p className="text-xs text-slate-600">
-                    This complaint has been marked resolved. Please rate the service quality and resolution turnaround:
+                    This complaint has been marked resolved. Please rate the service quality and turnaround:
                   </p>
 
                   <div className="flex items-center gap-2">
@@ -303,20 +434,22 @@ export const ComplaintDetailPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <textarea
-                    rows={2}
-                    placeholder="Optional feedback comments for departmental service improvement..."
-                    value={feedbackComment}
-                    onChange={(e) => setFeedbackComment(e.target.value)}
-                    className="w-full text-xs rounded-lg border border-slate-300 p-2.5 focus:outline-none focus:ring-1 focus:ring-campus-700"
-                  />
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="Optional feedback remark for quality assurance..."
+                      value={feedbackComment}
+                      onChange={(e) => setFeedbackComment(e.target.value)}
+                      className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 text-slate-900 bg-white focus:outline-none focus:ring-1 focus:ring-campus-700"
+                    />
+                  </div>
 
                   <button
                     type="submit"
                     disabled={isSubmittingFeedback}
                     className="btn-primary text-xs"
                   >
-                    {isSubmittingFeedback ? 'Submitting...' : 'Submit Satisfaction Rating'}
+                    {isSubmittingFeedback ? 'Submitting Feedback...' : 'Submit Resolution Feedback'}
                   </button>
                 </form>
               )}
@@ -324,18 +457,17 @@ export const ComplaintDetailPage: React.FC = () => {
           )}
         </div>
 
-        {/* Right Column: Status Transition Timeline */}
+        {/* Right Column: Status History & Timeline */}
         <div className="space-y-6">
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs">
             <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-slate-500" />
-              Lifecycle Progress Timeline
+              Status Lifecycle History
             </h2>
 
             <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
               {complaint.statusHistory.map((item, idx) => (
                 <div key={item.id} className="relative text-xs">
-                  {/* Timeline Node dot */}
                   <div
                     className={`absolute -left-[23px] top-0.5 w-3.5 h-3.5 rounded-full border-2 bg-white ${
                       idx === 0
@@ -344,21 +476,19 @@ export const ComplaintDetailPage: React.FC = () => {
                     }`}
                   />
                   <div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900">
-                        {item.toStatus.replace('_', ' ')}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
+                    <div className="flex items-center justify-between font-semibold text-slate-900">
+                      <span>{item.toStatus.replace('_', ' ')}</span>
+                      <span className="text-[10px] text-slate-400 font-normal">
                         {new Date(item.timestamp).toLocaleDateString()}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-                      By {item.changedByName} ({item.changedByRole})
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      By: {item.changedByName} ({item.changedByRole.replace('_', ' ')})
                     </div>
                     {item.comment && (
-                      <div className="mt-1 text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 text-[11px] leading-relaxed">
+                      <p className="mt-1 text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 leading-snug">
                         {item.comment}
-                      </div>
+                      </p>
                     )}
                   </div>
                 </div>

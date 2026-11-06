@@ -4,7 +4,36 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta name="theme-color" content="#07294a" />
+    <meta name="description" content="Apply for campus services, download documents and track grievances at Aligarh Muslim University." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <title>AMU Campus Services</title>
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('secure-campus-theme');
+          if (stored === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+          } else if (stored === 'system') {
+            var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (prefersDark) {
+              document.documentElement.classList.add('dark');
+              document.documentElement.style.colorScheme = 'dark';
+            } else {
+              document.documentElement.classList.remove('dark');
+              document.documentElement.style.colorScheme = 'light';
+            }
+          } else {
+            // Default to Light theme
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

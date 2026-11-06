@@ -10,14 +10,14 @@ export const PriorityBadge: React.FC<PriorityBadgeProps> = ({ priority, classNam
   const getStyle = () => {
     switch (priority) {
       case 'CRITICAL':
-        return 'bg-rose-100 text-rose-800 border-rose-300 font-semibold';
+        return 'bg-rose-100 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800 font-semibold';
       case 'HIGH':
-        return 'bg-amber-100 text-amber-800 border-amber-300';
+        return 'bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800';
       case 'MEDIUM':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
+        return 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
       case 'LOW':
       default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
+        return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
     }
   };
 

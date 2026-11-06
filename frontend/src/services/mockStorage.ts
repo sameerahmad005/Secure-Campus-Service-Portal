@@ -52,11 +52,24 @@ class MockStorage {
   private currentUser: User;
 
   constructor() {
-    this.users = this.load(STORAGE_KEYS.USERS, MOCK_USERS);
+    const loadedUsers = this.load(STORAGE_KEYS.USERS, MOCK_USERS);
+    // Auto-refresh cache if older mock cache lacks 9 stakeholder accounts
+    if (loadedUsers.length < MOCK_USERS.length || !loadedUsers.some((u) => u.role === 'DSW')) {
+      this.users = [...MOCK_USERS];
+      this.persist(STORAGE_KEYS.USERS, this.users);
+    } else {
+      this.users = loadedUsers;
+    }
+
     this.departments = MOCK_DEPARTMENTS;
     this.services = MOCK_SERVICES;
-    this.complaints = this.load(STORAGE_KEYS.COMPLAINTS, MOCK_COMPLAINTS);
-    this.requests = this.load(STORAGE_KEYS.REQUESTS, MOCK_REQUESTS);
+
+    const loadedComplaints = this.load(STORAGE_KEYS.COMPLAINTS, MOCK_COMPLAINTS);
+    this.complaints = (loadedComplaints && loadedComplaints.length > 0) ? loadedComplaints : [...MOCK_COMPLAINTS];
+
+    const loadedRequests = this.load(STORAGE_KEYS.REQUESTS, MOCK_REQUESTS);
+    this.requests = (loadedRequests && loadedRequests.length > 0) ? loadedRequests : [...MOCK_REQUESTS];
+
     this.notices = this.load(STORAGE_KEYS.NOTICES, MOCK_NOTICES);
     this.notifications = this.load(STORAGE_KEYS.NOTIFICATIONS, MOCK_NOTIFICATIONS);
     this.auditLogs = this.load(STORAGE_KEYS.AUDIT_LOGS, MOCK_AUDIT_LOGS);
@@ -217,12 +230,19 @@ class MockStorage {
     localStorage.removeItem(STORAGE_KEYS.AUDIT_LOGS);
     localStorage.removeItem(STORAGE_KEYS.USERS);
     this.users = [...MOCK_USERS];
-    this.complaints = [...MOCK_COMPLAINTS];
-    this.requests = [...MOCK_REQUESTS];
+    this.complaints = [];
+    this.requests = [];
     this.notices = [...MOCK_NOTICES];
     this.notifications = [...MOCK_NOTIFICATIONS];
     this.auditLogs = [...MOCK_AUDIT_LOGS];
     this.currentUser = this.users[0];
+  }
+
+  clearComplaintsAndRequests(): void {
+    localStorage.removeItem(STORAGE_KEYS.COMPLAINTS);
+    localStorage.removeItem(STORAGE_KEYS.REQUESTS);
+    this.complaints = [];
+    this.requests = [];
   }
 }
 

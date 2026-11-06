@@ -7,7 +7,42 @@
  * integration when replacing mock services with real backend endpoints.
  */
 
-export type Role = 'STUDENT' | 'STAFF' | 'DEPT_ADMIN' | 'ADMIN';
+import type {
+  VerificationStatus,
+  RequesterType,
+  AttendanceComplaintData,
+} from './serviceCatalog';
+
+export * from './serviceCatalog';
+
+/**
+ * 9 Stakeholder Roles identified in Stakeholder.pdf analysis:
+ * 1. STUDENT: Basic student user
+ * 2. DSW: Welfare manager
+ * 3. HALL_STAFF: Hall Provosts / Wardens / Hall Office Staff (Hall-level access)
+ * 4. DEPT_STAFF: Department / Section Administrative Staff (Department-level access)
+ * 5. FACULTY: Professors / Teachers (Faculty access)
+ * 6. SRGC: Student Grievance Cell (Grievance manager)
+ * 7. MANAGEMENT: University Administration / Management (Management access)
+ * 8. CHAIRMAN: Department / Unit Chairman (Senior oversight)
+ * 9. IT_ADMIN: IT / System Administrators (Technical admin)
+ *
+ * (Legacy aliases STAFF, DEPT_ADMIN, ADMIN are retained for backward compatibility)
+ */
+export type Role =
+  | 'STUDENT'
+  | 'DSW'
+  | 'HALL_STAFF'
+  | 'DEPT_STAFF'
+  | 'FACULTY'
+  | 'SRGC'
+  | 'MANAGEMENT'
+  | 'UNIVERSITY_MGMT'
+  | 'CHAIRMAN'
+  | 'IT_ADMIN'
+  | 'STAFF'
+  | 'DEPT_ADMIN'
+  | 'ADMIN';
 
 export interface User {
   id: string;
@@ -15,9 +50,11 @@ export interface User {
   email: string;
   role: Role;
   studentId?: string; // Roll / Enrollment number placeholder (Student only)
-  employeeId?: string; // Staff ID placeholder
-  departmentId?: string; // Department affiliation (Staff / Dept Admin)
+  employeeId?: string; // Staff / Faculty ID placeholder
+  departmentId?: string; // Department affiliation
   departmentName?: string;
+  hallId?: string; // Hall affiliation (Hall Staff / Provost)
+  hallName?: string;
   phone?: string;
   isActive: boolean;
   avatarUrl?: string;
@@ -35,21 +72,36 @@ export interface Department {
   isMockData: true; // Explicit declaration: not verified AMU institutional entity
 }
 
+/**
+ * Complaint Status lifecycle sourced from Stakeholder.pdf (Page 6):
+ * - SUBMITTED: Student ne complaint submit kar di.
+ * - UNDER_REVIEW: Attendance in-charge ya teacher records verify kar raha hai.
+ * - NEED_MORE_INFO: Student se additional proof ya clarification chahiye.
+ * - ESCALATED: Department Head ko case forward kiya gaya hai.
+ * - RESOLVED: Verified correction kar di gayi hai, ya reasoned decision de diya gaya hai.
+ * - REJECTED: Verification ke baad complaint valid nahi mili; reason student ko bataya jayega.
+ * 
+ * (IN_PROGRESS and CLOSED retained for legacy/request compatibility)
+ */
 export type ComplaintStatus =
   | 'SUBMITTED'
   | 'UNDER_REVIEW'
-  | 'IN_PROGRESS'
+  | 'NEED_MORE_INFO'
+  | 'ESCALATED'
   | 'RESOLVED'
   | 'REJECTED'
+  | 'IN_PROGRESS'
   | 'CLOSED';
 
 export type ComplaintPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 export type ComplaintCategory =
-  | 'INFRASTRUCTURE'
   | 'ACADEMIC'
-  | 'HOSTEL'
+  | 'INFRASTRUCTURE'
   | 'IT_NETWORK'
+  | 'HOSTEL'
+  | 'ACADEMIC_DOCUMENTS'
+  | 'WELFARE_GRIEVANCE'
   | 'SANITATION'
   | 'LIBRARY'
   | 'ADMINISTRATIVE'
@@ -76,6 +128,18 @@ export interface StatusHistory {
   timestamp: string;
 }
 
+export interface AssignmentHistory {
+  id: string;
+  complaintId: string;
+  fromAssignment: string;
+  toAssignment: string;
+  assignedById: string;
+  assignedByName: string;
+  assignedByRole: Role;
+  reason: string;
+  timestamp: string;
+}
+
 export interface Remark {
   id: string;
   entityId: string;
@@ -97,13 +161,17 @@ export interface Feedback {
 
 export interface Complaint {
   id: string;
-  ticketNumber: string; // Format: CMP-YYYY-XXXX
-  studentId: string;
+  ticketNumber: string; // Format: CMP-YYYY-XXXX (Complaint_ID in PDF)
+  studentId: string; // Student_ID in PDF
   studentName: string;
   studentEmail: string;
   departmentId: string;
   departmentName: string;
+  hallId?: string;
+  hallName?: string;
   category: ComplaintCategory;
+  subcategoryId?: string;
+  subcategoryName?: string;
   priority: ComplaintPriority;
   title: string;
   description: string;
@@ -111,12 +179,18 @@ export interface Complaint {
   status: ComplaintStatus;
   assignedStaffId?: string;
   assignedStaffName?: string;
+  assignedUnit?: string; // Assigned_To in PDF
   attachments: Attachment[];
   statusHistory: StatusHistory[];
+  assignmentHistory?: AssignmentHistory[];
   remarks: Remark[];
   feedback?: Feedback;
-  createdAt: string;
-  updatedAt: string;
+  resolutionReason?: string;
+  rejectionReason?: string;
+  dynamicFormData?: Record<string, any>; // Stores attendance details or custom form data
+  attendanceData?: AttendanceComplaintData;
+  createdAt: string; // Submission_Date in PDF
+  updatedAt: string; // Last_Updated in PDF
   resolvedAt?: string;
 }
 
@@ -136,7 +210,15 @@ export type RequestCategory =
   | 'LIBRARY_CLEARANCE'
   | 'TRANSCRIPT_REQUEST'
   | 'LAB_PERMISSION'
-  | 'GENERAL_SERVICE';
+  | 'GENERAL_SERVICE'
+  | 'PROFILE_CORRECTION'
+  | 'EXAM_HALL_TICKET'
+  | 'RESULT_DEGREE'
+  | 'INSTITUTE_EMAIL'
+  | 'SCHOLARSHIP'
+  | 'CAMPUS_WIFI'
+  | 'MEDICAL_APPOINTMENT'
+  | 'FEE_PAYMENTS';
 
 export interface ServiceFormField {
   id: string;
@@ -246,4 +328,58 @@ export interface DashboardStatistics {
   totalDepartmentsCount?: number;
   averageResolutionDays?: number;
   criticalCasesCount?: number;
+}
+
+export interface StudentAcademicRecord {
+  id: string;
+  userId: string;
+  enrollmentNumber: string;
+  rollNumber: string;
+  fullName: string;
+  email: string;
+  mobileNumber?: string;
+  address?: string;
+  fatherName?: string;
+  motherName?: string;
+  admissionYear: number;
+  course: {
+    id: string;
+    code: string;
+    name: string;
+    total_semesters: number;
+    degree_level: string;
+  };
+  academicSession: {
+    id: string;
+    session_name: string;
+  };
+  currentSemester: number;
+  allottedHall?: {
+    id: string;
+    code: string;
+    name: string;
+  } | null;
+  accountStatus: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FacultyAcademicRecord {
+  id: string;
+  userId: string;
+  facultyNumber: string;
+  fullName: string;
+  email: string;
+  mobileNumber?: string;
+  department: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  dateOfBirth?: string;
+  gender?: string;
+  appointmentType: string;
+  accountStatus: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_VERIFICATION';
+  createdAt: string;
+  updatedAt: string;
 }

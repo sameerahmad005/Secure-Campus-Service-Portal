@@ -19,6 +19,7 @@ import type {
   CreateComplaintInput,
   UpdateComplaintStatusInput,
   AssignStaffInput,
+  ForwardComplaintInput,
   CreateServiceRequestInput,
 } from './types';
 
@@ -37,6 +38,8 @@ import type {
 } from '../types';
 
 import { mockStorage, simulateDelay } from './mockStorage';
+import { canTransitionStatus, canForwardOrEscalate } from '../utils/permissions';
+import { apiClient } from './apiClient';
 
 // ==========================================
 // Authentication Service (Mock)
@@ -97,7 +100,60 @@ export const authService: IAuthService = {
 // ==========================================
 export const complaintService: IComplaintService = {
   async getComplaints(filter): Promise<Complaint[]> {
-    await simulateDelay(200);
+    try {
+      const currentUser = mockStorage.getCurrentUser();
+      const email = currentUser?.email || 'student.tariq@amu.ac.in';
+      const role = currentUser?.role || 'STUDENT';
+      const liveComplaints = await apiClient.getComplaints(email, role);
+
+      if (Array.isArray(liveComplaints)) {
+        let list: Complaint[] = liveComplaints.map((c: any) => ({
+          id: c.id,
+          ticketNumber: c.ticketNumber || c.trackingNumber,
+          studentId: c.studentId || currentUser?.id,
+          studentName: c.studentName || currentUser?.name,
+          studentEmail: c.studentEmail || currentUser?.email,
+          departmentId: c.departmentId || '',
+          departmentName: c.departmentName || 'General Maintenance & Services',
+          category: c.category || 'OTHER',
+          subcategoryId: c.subcategory?.id,
+          subcategoryName: c.subcategory?.name,
+          priority: c.priority || 'MEDIUM',
+          title: c.title,
+          description: c.description,
+          status: c.status || 'SUBMITTED',
+          assignedUnit: c.departmentName || 'Department Desk',
+          attachments: c.attachments || [],
+          statusHistory: c.statusHistory || [],
+          assignmentHistory: [],
+          remarks: c.remarks || [],
+          createdAt: c.createdAt || new Date().toISOString(),
+          updatedAt: c.updatedAt || new Date().toISOString(),
+          resolvedAt: c.resolvedAt,
+        }));
+
+        if (filter?.status) {
+          list = list.filter((c) => c.status === filter.status);
+        }
+        if (filter?.category) {
+          list = list.filter((c) => c.category === filter.category);
+        }
+        if (filter?.search) {
+          const q = filter.search.toLowerCase();
+          list = list.filter(
+            (c) =>
+              c.title.toLowerCase().includes(q) ||
+              c.ticketNumber.toLowerCase().includes(q) ||
+              c.description.toLowerCase().includes(q)
+          );
+        }
+        return list;
+      }
+    } catch {
+      // Backend unavailable; fallback to mockStorage
+    }
+
+    await simulateDelay(150);
     let list = mockStorage.getComplaints();
 
     if (filter?.studentId) {
@@ -105,6 +161,15 @@ export const complaintService: IComplaintService = {
     }
     if (filter?.departmentId) {
       list = list.filter((c) => c.departmentId === filter.departmentId);
+    }
+    if (filter?.hallId) {
+      list = list.filter((c) => c.hallId === filter.hallId);
+    }
+    if (filter?.category) {
+      list = list.filter((c) => c.category === filter.category);
+    }
+    if (filter?.assignedStaffId) {
+      list = list.filter((c) => c.assignedStaffId === filter.assignedStaffId);
     }
     if (filter?.status) {
       list = list.filter((c) => c.status === filter.status);
@@ -115,7 +180,8 @@ export const complaintService: IComplaintService = {
         (c) =>
           c.title.toLowerCase().includes(q) ||
           c.ticketNumber.toLowerCase().includes(q) ||
-          c.description.toLowerCase().includes(q)
+          c.description.toLowerCase().includes(q) ||
+          (c.attendanceData?.subject && c.attendanceData.subject.toLowerCase().includes(q))
       );
     }
     return list;
@@ -142,12 +208,17 @@ export const complaintService: IComplaintService = {
       studentEmail: student.email,
       departmentId: data.departmentId,
       departmentName: dept ? dept.name : 'General Maintenance & Services',
+      hallId: student.hallId,
+      hallName: student.hallName,
       category: data.category,
+      subcategoryId: data.subcategoryId,
+      subcategoryName: data.subcategoryName,
       priority: data.priority,
       title: data.title,
       description: data.description,
       location: data.location || 'Campus Facility',
       status: 'SUBMITTED',
+      assignedUnit: dept?.name || 'Department Desk',
       attachments: data.attachmentFiles?.map((file, i) => ({
         id: `att_${Date.now()}_${i}`,
         fileName: file.name,
@@ -164,24 +235,51 @@ export const complaintService: IComplaintService = {
           changedById: student.id,
           changedByName: student.name,
           changedByRole: student.role,
-          comment: 'Ticket initially lodged by student.',
+          comment: 'Student ne complaint submit kar di.',
           timestamp: new Date().toISOString(),
         },
       ],
+      assignmentHistory: [],
       remarks: [],
+      dynamicFormData: data.dynamicFormData,
+      attendanceData: data.attendanceData,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
+    try {
+      const catList = await apiClient.getCategories().catch(() => []);
+      const matchedCat = catList.find(c => c.name.toLowerCase() === data.category.toLowerCase()) || catList[0];
+      if (matchedCat) {
+        const liveCreated = await apiClient.createComplaint({
+          categoryId: matchedCat.id,
+          subcategoryId: data.subcategoryId,
+          title: data.title,
+          description: data.description,
+          priority: data.priority,
+        }, student.email);
+        if (liveCreated?.ticketNumber) {
+          newComplaint.ticketNumber = liveCreated.ticketNumber;
+        }
+      }
+    } catch (err) {
+      console.warn('Backend sync on createComplaint:', err);
+    }
+
     mockStorage.addComplaint(newComplaint);
-    mockStorage.logAction(student, 'CREATE_COMPLAINT', `Complaint:${ticketNumber}`, `Created complaint: ${data.title}`);
+    mockStorage.logAction(
+      student,
+      'CREATE_COMPLAINT',
+      `Complaint:${ticketNumber}`,
+      `Created ticket: ${data.title} (${data.category})`
+    );
 
     // Create confirmation notification for student
     mockStorage.addNotification({
       id: `ntf_${Date.now()}`,
       userId: student.id,
       title: 'Complaint Lodged Successfully',
-      message: `Your ticket ${ticketNumber} has been received and routed to ${dept?.name}.`,
+      message: `Your ticket ${ticketNumber} has been received and routed to ${dept?.name || 'Department'}.`,
       type: 'STATUS_UPDATE',
       entityType: 'COMPLAINT',
       entityId: newComplaint.id,
@@ -197,12 +295,21 @@ export const complaintService: IComplaintService = {
     const complaint = await this.getComplaintById(input.complaintId);
     if (!complaint) throw new Error('Complaint not found');
 
+    const validation = canTransitionStatus(actor, complaint, input.newStatus);
+    if (!validation.allowed) {
+      throw new Error(validation.reason || 'Unauthorized status transition');
+    }
+
     const prevStatus = complaint.status;
     complaint.status = input.newStatus;
     complaint.updatedAt = new Date().toISOString();
 
     if (input.newStatus === 'RESOLVED' || input.newStatus === 'CLOSED') {
       complaint.resolvedAt = new Date().toISOString();
+      if (input.resolutionReason) complaint.resolutionReason = input.resolutionReason;
+    }
+    if (input.newStatus === 'REJECTED') {
+      if (input.rejectionReason) complaint.rejectionReason = input.rejectionReason;
     }
 
     // Append history
@@ -214,7 +321,7 @@ export const complaintService: IComplaintService = {
       changedById: actor.id,
       changedByName: actor.name,
       changedByRole: actor.role,
-      comment: input.comment || `Status updated to ${input.newStatus}`,
+      comment: input.comment || `Status updated to ${input.newStatus.replace('_', ' ')}`,
       timestamp: new Date().toISOString(),
     });
 
@@ -275,12 +382,28 @@ export const complaintService: IComplaintService = {
     const complaint = await this.getComplaintById(input.ticketId);
     if (!complaint) throw new Error('Complaint not found');
 
+    const previousAssignment = complaint.assignedStaffName || complaint.assignedUnit || 'Unassigned Desk';
     complaint.assignedStaffId = input.staffId;
     complaint.assignedStaffName = input.staffName;
+    if (input.assignedUnit) complaint.assignedUnit = input.assignedUnit;
+
     if (complaint.status === 'SUBMITTED') {
       complaint.status = 'UNDER_REVIEW';
     }
     complaint.updatedAt = new Date().toISOString();
+
+    if (!complaint.assignmentHistory) complaint.assignmentHistory = [];
+    complaint.assignmentHistory.unshift({
+      id: `ah_${Date.now()}`,
+      complaintId: complaint.id,
+      fromAssignment: previousAssignment,
+      toAssignment: `${input.staffName} (${input.assignedUnit || 'Staff Desk'})`,
+      assignedById: actor.id,
+      assignedByName: actor.name,
+      assignedByRole: actor.role,
+      reason: input.reason || 'Case assigned for technical review and verification.',
+      timestamp: new Date().toISOString(),
+    });
 
     mockStorage.updateComplaint(complaint);
     mockStorage.logAction(
@@ -288,6 +411,68 @@ export const complaintService: IComplaintService = {
       'CASE_ASSIGNMENT',
       `Complaint:${complaint.ticketNumber}`,
       `Assigned to staff officer ${input.staffName}`
+    );
+
+    return complaint;
+  },
+
+  async forwardComplaint(actor: User, input: ForwardComplaintInput): Promise<Complaint> {
+    await simulateDelay(300);
+    const complaint = await this.getComplaintById(input.complaintId);
+    if (!complaint) throw new Error('Complaint not found');
+
+    if (!canForwardOrEscalate(actor.role)) {
+      throw new Error('Unauthorized: Only authorized officers may forward or escalate complaints.');
+    }
+
+    const previousAssignment = `${complaint.departmentName}${
+      complaint.assignedStaffName ? ` / ${complaint.assignedStaffName}` : ''
+    }`;
+    const newAssignment = `${input.targetDepartmentName}${
+      input.targetStaffName ? ` / ${input.targetStaffName}` : ''
+    }`;
+
+    // Update assignment details
+    complaint.departmentId = input.targetDepartmentId;
+    complaint.departmentName = input.targetDepartmentName;
+    complaint.assignedStaffId = input.targetStaffId;
+    complaint.assignedStaffName = input.targetStaffName;
+    complaint.assignedUnit = input.targetDepartmentName;
+    complaint.updatedAt = new Date().toISOString();
+
+    // Record assignment history
+    if (!complaint.assignmentHistory) complaint.assignmentHistory = [];
+    complaint.assignmentHistory.unshift({
+      id: `ah_fwd_${Date.now()}`,
+      complaintId: complaint.id,
+      fromAssignment: previousAssignment,
+      toAssignment: newAssignment,
+      assignedById: actor.id,
+      assignedByName: actor.name,
+      assignedByRole: actor.role,
+      reason: input.reason,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Record status history comment
+    complaint.statusHistory.unshift({
+      id: `sh_fwd_${Date.now()}`,
+      entityId: complaint.id,
+      fromStatus: complaint.status,
+      toStatus: complaint.status,
+      changedById: actor.id,
+      changedByName: actor.name,
+      changedByRole: actor.role,
+      comment: `Forwarded from ${previousAssignment} to ${newAssignment}. Reason: ${input.reason}`,
+      timestamp: new Date().toISOString(),
+    });
+
+    mockStorage.updateComplaint(complaint);
+    mockStorage.logAction(
+      actor,
+      'CASE_FORWARDED',
+      `Complaint:${complaint.ticketNumber}`,
+      `Forwarded case to ${newAssignment}. Reason: ${input.reason}`
     );
 
     return complaint;
@@ -344,17 +529,90 @@ export const complaintService: IComplaintService = {
 // ==========================================
 export const serviceRequestService: IServiceRequestService = {
   async getAvailableServices(): Promise<ServiceDefinition[]> {
-    await simulateDelay(150);
+    try {
+      const subs = await apiClient.getSubcategories();
+      if (Array.isArray(subs) && subs.length > 0) {
+        return subs.map((sub: any) => ({
+          id: sub.id,
+          title: sub.name,
+          category: 'GENERAL_SERVICE' as const,
+          departmentId: sub.target_department_id || '',
+          departmentName: 'Department Office',
+          description: `Apply for ${sub.name} with standard SLA of ${sub.sla_days || 3} working days.`,
+          estimatedTurnaroundDays: sub.sla_days || 3,
+          formFields: Array.isArray(sub.form_schema) && sub.form_schema.length > 0
+            ? sub.form_schema.map((f: any) => ({
+                id: f.id || 'field',
+                name: f.name || f.id || 'field',
+                label: f.label || f.name || 'Field',
+                type: (['text', 'textarea', 'select', 'number'].includes(f.type) ? f.type : 'text') as any,
+                required: !!f.required,
+                options: f.options,
+                placeholder: f.placeholder,
+              }))
+            : [
+                {
+                  id: 'purpose',
+                  name: 'purpose',
+                  label: 'Reason / Application Details',
+                  type: 'textarea' as const,
+                  required: true,
+                },
+              ],
+          isActive: sub.is_active ?? true,
+          isMockData: true as const,
+        }));
+      }
+    } catch {
+      // Fallback
+    }
     return mockStorage.getServices();
   },
 
   async getServiceById(id: string): Promise<ServiceDefinition | null> {
-    await simulateDelay(100);
-    return mockStorage.getServices().find((s) => s.id === id) || null;
+    const services = await this.getAvailableServices();
+    return services.find((s) => s.id === id) || null;
   },
 
   async getRequests(filter): Promise<ServiceRequest[]> {
-    await simulateDelay(200);
+    try {
+      const currentUser = mockStorage.getCurrentUser();
+      const email = currentUser?.email || 'student.tariq@amu.ac.in';
+      const role = currentUser?.role || 'STUDENT';
+      const liveRequests = await apiClient.getRequests(email, role);
+
+      if (Array.isArray(liveRequests)) {
+        let list: ServiceRequest[] = liveRequests.map((r: any) => ({
+          id: r.id,
+          requestNumber: r.requestNumber || r.trackingNumber,
+          studentId: r.studentId || currentUser?.id,
+          studentName: r.studentName || currentUser?.name,
+          studentEmail: r.studentEmail || currentUser?.email,
+          serviceId: r.serviceId,
+          serviceName: r.serviceTitle || 'Campus Service Request',
+          departmentId: r.departmentId || '',
+          departmentName: r.departmentName || 'General Administration',
+          category: 'GENERAL_SERVICE' as const,
+          status: r.status || 'SUBMITTED',
+          formData: r.formData || {},
+          attachments: r.attachments || [],
+          statusHistory: r.statusHistory || [],
+          remarks: r.remarks || [],
+          createdAt: r.createdAt || new Date().toISOString(),
+          updatedAt: r.updatedAt || new Date().toISOString(),
+          completedAt: r.fulfilledAt || undefined,
+        }));
+
+        if (filter?.status) {
+          list = list.filter((r) => r.status === filter.status);
+        }
+        return list;
+      }
+    } catch {
+      // Fallback
+    }
+
+    await simulateDelay(150);
     let list = mockStorage.getRequests();
     if (filter?.studentId) {
       list = list.filter((r) => r.studentId === filter.studentId);
@@ -419,6 +677,22 @@ export const serviceRequestService: IServiceRequestService = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    try {
+      const subList = await apiClient.getSubcategories().catch(() => []);
+      const matchedSub = subList.find(s => s.id === data.serviceId || s.name.toLowerCase() === service.title.toLowerCase()) || subList[0];
+      if (matchedSub) {
+        const liveReq = await apiClient.createRequest({
+          subcategoryId: matchedSub.id,
+          formData: data.formData,
+        }, student.email);
+        if (liveReq?.requestNumber) {
+          newRequest.requestNumber = liveReq.requestNumber;
+        }
+      }
+    } catch (err) {
+      console.warn('Backend sync on createRequest:', err);
+    }
 
     mockStorage.addRequest(newRequest);
     mockStorage.logAction(
@@ -564,9 +838,19 @@ export const adminService: IAdminService = {
   },
 
   async getSystemStatistics(): Promise<DashboardStatistics> {
-    await simulateDelay(200);
-    const complaints = mockStorage.getComplaints();
-    const requests = mockStorage.getRequests();
+    await simulateDelay(150);
+    let complaints: Complaint[] = [];
+    let requests: ServiceRequest[] = [];
+    try {
+      complaints = await complaintService.getComplaints();
+    } catch {
+      complaints = [];
+    }
+    try {
+      requests = await serviceRequestService.getRequests();
+    } catch {
+      requests = [];
+    }
 
     const openComplaintsCount = complaints.filter(
       (c) => c.status !== 'RESOLVED' && c.status !== 'CLOSED' && c.status !== 'REJECTED'

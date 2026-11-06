@@ -13,6 +13,10 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = ''
         return 'badge-submitted';
       case 'UNDER_REVIEW':
         return 'badge-under-review';
+      case 'NEED_MORE_INFO':
+        return 'badge-need-more-info';
+      case 'ESCALATED':
+        return 'badge-escalated';
       case 'IN_PROGRESS':
         return 'badge-in-progress';
       case 'RESOLVED':

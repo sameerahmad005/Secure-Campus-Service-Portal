@@ -12,6 +12,7 @@ import {
   Building,
   CheckCircle,
   ShieldAlert,
+  Search,
 } from 'lucide-react';
 
 export const StudentRequestsPage: React.FC = () => {
@@ -20,6 +21,7 @@ export const StudentRequestsPage: React.FC = () => {
   const [availableServices, setAvailableServices] = useState<ServiceDefinition[]>([]);
   const [activeTab, setActiveTab] = useState<'MY_REQUESTS' | 'CATALOG'>('MY_REQUESTS');
   const [isLoading, setIsLoading] = useState(true);
+  const [searchFilter, setSearchFilter] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -39,15 +41,36 @@ export const StudentRequestsPage: React.FC = () => {
     load();
   }, [currentUser]);
 
+  const filteredRequests = requests.filter((r) => {
+    if (!searchFilter.trim()) return true;
+    const q = searchFilter.toLowerCase();
+    return (
+      r.requestNumber.toLowerCase().includes(q) ||
+      r.serviceName.toLowerCase().includes(q) ||
+      r.departmentName.toLowerCase().includes(q)
+    );
+  });
+
+  const filteredServices = availableServices.filter((s) => {
+    if (!searchFilter.trim()) return true;
+    const q = searchFilter.toLowerCase();
+    return (
+      s.title.toLowerCase().includes(q) ||
+      s.departmentName.toLowerCase().includes(q) ||
+      s.description.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="space-y-6">
+      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
             Campus Service Requests & Clearances
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Apply for certificates, network credentials, hostel services, and library clearances
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Apply for certificates, identity documents, exam permits, Wi-Fi credentials, and hall services
           </p>
         </div>
 
@@ -57,55 +80,72 @@ export const StudentRequestsPage: React.FC = () => {
         </Link>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-200">
-        <button
-          onClick={() => setActiveTab('MY_REQUESTS')}
-          className={`pb-3 px-4 text-xs font-semibold border-b-2 transition-colors ${
-            activeTab === 'MY_REQUESTS'
-              ? 'border-campus-900 text-campus-950 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          My Applications & Trackers ({requests.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('CATALOG')}
-          className={`pb-3 px-4 text-xs font-semibold border-b-2 transition-colors ${
-            activeTab === 'CATALOG'
-              ? 'border-campus-900 text-campus-950 font-bold'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          Available Campus Services Catalog ({availableServices.length})
-        </button>
+      {/* Tabs & Search */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-1">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('MY_REQUESTS')}
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors ${
+              activeTab === 'MY_REQUESTS'
+                ? 'border-campus-900 dark:border-campus-400 text-campus-950 dark:text-campus-200 font-bold'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            My Applications & Trackers ({requests.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('CATALOG')}
+            className={`pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors ${
+              activeTab === 'CATALOG'
+                ? 'border-campus-900 dark:border-campus-400 text-campus-950 dark:text-campus-200 font-bold'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            Available Campus Services Catalog ({availableServices.length})
+          </button>
+        </div>
+
+        <div className="relative w-full sm:w-64 mb-2 sm:mb-0">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Filter requests..."
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-campus-700 placeholder:text-slate-400"
+          />
+        </div>
       </div>
 
       {activeTab === 'MY_REQUESTS' ? (
         <div className="space-y-3">
-          {requests.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
-              <FileCheck2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <h3 className="text-sm font-semibold text-slate-800">No active service requests</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                You have not filed any certificate or service requests yet.
+          {filteredRequests.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-12 text-center text-slate-500 dark:text-slate-400">
+              <FileCheck2 className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                {searchFilter ? 'No matching requests found' : 'No active service requests'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {searchFilter ? 'Try clearing your search term.' : 'You have not filed any certificate or service requests yet.'}
               </p>
-              <button
-                onClick={() => setActiveTab('CATALOG')}
-                className="mt-3 text-xs font-semibold text-campus-700 hover:text-campus-900"
-              >
-                Browse service catalog →
-              </button>
+              {!searchFilter && (
+                <button
+                  onClick={() => setActiveTab('CATALOG')}
+                  className="mt-3 text-xs font-semibold text-campus-700 dark:text-campus-400 hover:underline"
+                >
+                  Browse service catalog →
+                </button>
+              )}
             </div>
           ) : (
-            requests.map((req) => (
+            filteredRequests.map((req) => (
               <div
                 key={req.id}
-                className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs hover:border-slate-300 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-2xs hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
               >
                 <div className="space-y-1.5 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                    <span className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                       {req.requestNumber}
                     </span>
                     <StatusBadge status={req.status} />
@@ -114,16 +154,16 @@ export const StudentRequestsPage: React.FC = () => {
                     </span>
                   </div>
 
-                  <h3 className="text-sm font-bold text-slate-900">
-                    <Link to={`/student/requests/${req.id}`}>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    <Link to={`/student/requests/${req.id}`} className="hover:text-campus-700 dark:hover:text-campus-400">
                       {req.serviceName}
                     </Link>
                   </h3>
 
-                  <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500">
+                  <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
                     <span>Submitted: {new Date(req.createdAt).toLocaleDateString()}</span>
                     {req.assignedStaffName && (
-                      <span className="text-slate-700 font-medium">
+                      <span className="text-slate-700 dark:text-slate-300 font-medium">
                         Processing Officer: {req.assignedStaffName}
                       </span>
                     )}
@@ -146,14 +186,14 @@ export const StudentRequestsPage: React.FC = () => {
       ) : (
         /* Available Services Catalog */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {availableServices.map((srv) => (
+          {filteredServices.map((srv) => (
             <div
               key={srv.id}
-              className="bg-white rounded-xl border border-slate-200 p-5 shadow-2xs hover:border-campus-300 transition-all flex flex-col justify-between"
+              className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-2xs hover:border-campus-300 dark:hover:border-campus-700 transition-all flex flex-col justify-between"
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-campus-800 bg-campus-50 px-2 py-0.5 rounded border border-campus-200">
+                  <span className="text-[10px] font-bold text-campus-800 dark:text-campus-300 bg-campus-50 dark:bg-campus-950/60 px-2 py-0.5 rounded border border-campus-200 dark:border-campus-800">
                     {srv.departmentName}
                   </span>
                   <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
@@ -162,11 +202,11 @@ export const StudentRequestsPage: React.FC = () => {
                   </span>
                 </div>
 
-                <h3 className="text-sm font-bold text-slate-900">{srv.title}</h3>
-                <p className="text-xs text-slate-600 leading-relaxed">{srv.description}</p>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">{srv.title}</h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{srv.description}</p>
               </div>
 
-              <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+              <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <span className="text-[11px] text-slate-400">
                   {srv.formFields.length} required fields
                 </span>

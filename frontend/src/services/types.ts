@@ -36,14 +36,20 @@ export interface IAuthService {
   getMockAccounts(): Promise<User[]>;
 }
 
+import type { AttendanceComplaintData } from '../types/serviceCatalog';
+
 export interface CreateComplaintInput {
   title: string;
   description: string;
   departmentId: string;
   category: ComplaintCategory;
+  subcategoryId?: string;
+  subcategoryName?: string;
   priority: ComplaintPriority;
   location?: string;
   attachmentFiles?: File[];
+  dynamicFormData?: Record<string, any>;
+  attendanceData?: AttendanceComplaintData;
 }
 
 export interface UpdateComplaintStatusInput {
@@ -52,25 +58,42 @@ export interface UpdateComplaintStatusInput {
   comment?: string;
   internalRemark?: string;
   publicRemark?: string;
+  resolutionReason?: string;
+  rejectionReason?: string;
 }
 
 export interface AssignStaffInput {
   ticketId: string;
   staffId: string;
   staffName: string;
+  assignedUnit?: string;
+  reason?: string;
+}
+
+export interface ForwardComplaintInput {
+  complaintId: string;
+  targetDepartmentId: string;
+  targetDepartmentName: string;
+  targetStaffId?: string;
+  targetStaffName?: string;
+  reason: string;
 }
 
 export interface IComplaintService {
   getComplaints(filter?: {
     studentId?: string;
     departmentId?: string;
+    hallId?: string;
     status?: ComplaintStatus;
+    category?: ComplaintCategory;
+    assignedStaffId?: string;
     search?: string;
   }): Promise<Complaint[]>;
   getComplaintById(id: string): Promise<Complaint | null>;
   createComplaint(student: User, data: CreateComplaintInput): Promise<Complaint>;
   updateStatus(actor: User, input: UpdateComplaintStatusInput): Promise<Complaint>;
   assignStaff(actor: User, input: AssignStaffInput): Promise<Complaint>;
+  forwardComplaint(actor: User, input: ForwardComplaintInput): Promise<Complaint>;
   addRemark(actor: User, complaintId: string, content: string, isInternal: boolean): Promise<Complaint>;
   submitFeedback(student: User, complaintId: string, feedback: { rating: number; comment?: string }): Promise<Feedback>;
 }

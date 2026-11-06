@@ -86,13 +86,31 @@ export const CreateRequestPage: React.FC = () => {
             Apply for Campus Service / Clearance
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Fill required information for official departmental processing
+            Request an institutional certificate, administrative clearance, or campus facility access
           </p>
         </div>
         <Link to="/student/requests" className="btn-secondary text-xs">
           <ArrowLeft className="w-3.5 h-3.5" />
           Cancel
         </Link>
+      </div>
+
+      {/* Institutional Distinction Banner */}
+      <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+        <HelpCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+        <div className="text-xs text-amber-900 leading-relaxed">
+          <span className="font-bold text-amber-950">Service Request vs. Complaint: </span>
+          Use this portal for requesting official university services (e.g., Bonafide Certificates,
+          Hostel Wi-Fi accounts, clearance letters). If you need to report an attendance error,
+          hostel maintenance issue, or academic grievance, please file a{' '}
+          <Link
+            to="/student/complaints/new"
+            className="font-bold underline text-amber-950 hover:text-black"
+          >
+            Formal Student Complaint
+          </Link>
+          .
+        </div>
       </div>
 
       {error && (
